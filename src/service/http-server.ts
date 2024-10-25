@@ -188,15 +188,15 @@ export class HttpServer {
 
     const options: ImageRenderOptions = {
       url: req.query.url,
-      width: req.query.width,
-      height: req.query.height,
+      width:  process.env['RENDERING_OVERRIDE_WIDTH'] || req.query.width,
+      height: process.env['RENDERING_OVERRIDE_HEIGHT'] || req.query.height,
       filePath: req.query.filePath,
       timeout: req.query.timeout,
       renderKey: req.query.renderKey,
       domain: req.query.domain,
       timezone: req.query.timezone,
       encoding: req.query.encoding,
-      deviceScaleFactor: req.query.deviceScaleFactor,
+      deviceScaleFactor: process.env['RENDERING_OVERRIDE_DEVICE_SCALE_FACTOR'] || req.query.deviceScaleFactor,
       headers: headers,
     };
 
