@@ -31,6 +31,7 @@ jobs:
           file: ./Dockerfile
           push: true
           tags: ghcr.io/${{ github.repository }}/grafana-image-renderer:latest
+          platforms: linux/amd64,linux/arm64
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -38,4 +39,4 @@ jobs:
       - name: Tag and Push Latest
         run: |
           docker tag ghcr.io/${{ github.repository }}/grafana-image-renderer:latest ghcr.io/${{ github.repository }}/grafana-image-renderer:latest
-          docker push ghcr.io/${{ github.repository }}/my-app:latest
+          docker push ghcr.io/${{ github.repository }}/grafana-image-renderer:latest
