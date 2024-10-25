@@ -36,7 +36,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       # Optional: Set the "latest" tag for the image
-      - name: Tag and Push Latest
-        run: |
-          docker tag ghcr.io/${{ github.repository }}/grafana-image-renderer:latest ghcr.io/${{ github.repository }}/grafana-image-renderer:latest
-          docker push ghcr.io/${{ github.repository }}/grafana-image-renderer:latest
+      # - name: Tag and Push Latest
+      #   run: |
+      #     docker tag ghcr.io/${{ github.repository }}/grafana-image-renderer:latest ghcr.io/${{ github.repository }}/grafana-image-renderer:latest
+      #     docker push ghcr.io/${{ github.repository }}/grafana-image-renderer:latest
