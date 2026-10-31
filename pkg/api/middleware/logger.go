@@ -1,0 +1,71 @@
+package middleware
+
+import (
+	"log/slog"
+	"net/http"
+	"slices"
+	"sync"
+	"time"
+
+	"github.com/grafana/grafana-image-renderer/pkg/config"
+)
+
+func RequestLogger(apiConfig config.APIConfig, h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		lw := &loggingResponseWriter{w: w}
+		defer func() {
+			if len(apiConfig.APISilenceRequestLogPath) > 0 && slices.Contains(apiConfig.APISilenceRequestLogPath, r.URL.Path) {
+				return
+			}
+
+			slog.InfoContext(r.Context(), "request complete",
+				"method", r.Method,
+				"mux_pattern", r.Pattern,
+				"uri", r.URL,
+				"status", lw.statusCode,
+				"status_text", http.StatusText(lw.statusCode),
+				"duration", time.Since(start),
+				"response_size_bytes", lw.bytesWritten)
+		}()
+		h.ServeHTTP(lw, r)
+	})
+}
+
+type loggingResponseWriter struct {
+	w            http.ResponseWriter
+	once         sync.Once
+	statusCode   int
+	bytesWritten int
+}
+
+var (
+	_ http.ResponseWriter = (*loggingResponseWriter)(nil)
+	_ http.Flusher        = (*loggingResponseWriter)(nil)
+)
+
+func (l *loggingResponseWriter) Header() http.Header {
+	return l.w.Header()
+}
+
+func (l *loggingResponseWriter) WriteHeader(code int) {
+	l.once.Do(func() {
+		l.statusCode = code
+	})
+	l.w.WriteHeader(code)
+}
+
+func (l *loggingResponseWriter) Write(b []byte) (int, error) {
+	l.once.Do(func() {
+		l.statusCode = http.StatusOK
+	})
+	n, err := l.w.Write(b)
+	l.bytesWritten += n
+	return n, err
+}
+
+func (l *loggingResponseWriter) Flush() {
+	if flusher, ok := l.w.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}

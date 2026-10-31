@@ -1,165 +1,74 @@
-A Grafana backend plugin that handles rendering panels and dashboards to PNGs using a headless browser (Chromium).
+# grafana-image-renderer
 
-## Requirements
+This fork follows upstream **v5.12.10**. It keeps three request overrides:
+`RENDERING_OVERRIDE_WIDTH`, `RENDERING_OVERRIDE_HEIGHT`, and
+`RENDERING_OVERRIDE_DEVICE_SCALE_FACTOR`. Nonempty values take precedence over
+Grafana's request parameters. For the existing 400x300 layout, also set
+`BROWSER_MIN_WIDTH=400` and `BROWSER_MIN_HEIGHT=300`; upstream minimums otherwise
+enlarge the viewport.
 
-### Supported operating systems
 
-- Linux (x64)
-- Windows (x64)
-- Mac OS X (x64)
+A backend service for Grafana.
+It provides panel and dashboard rendering with a headless browser (Chromium).
+You can get your favourite dashboards as PDFs, PNGs, or with Grafana Enterprise, CSVs and even over emails with Grafana Reports.
 
-### Dependencies
+## Installation
 
-This plugin is packaged in a single executable with [Node.js](https://nodejs.org/) runtime and [Chromium browser](https://www.chromium.org/Home).
-This means that you don't need to have Node.js and Chromium installed in your system for the plugin to function.
+You can find installation details in the [docs](/docs/sources/_index.md).
 
-However, the [Chromium browser](https://www.chromium.org/) depends on certain libraries. If you don't have all of those libraries installed in your
-system, you may see some errors when you try to render an image. For more information including troubleshooting help, refer to
-[Grafana Image Rendering documentation](https://grafana.com/docs/grafana/latest/image-rendering/).
+<!-- FIXME: Use the grafana.com docs when it's published -->
 
-### Memory requirements
+## Compile
 
-Rendering images requires a lot of memory, mainly because Grafana creates browser instances in the background for the actual rendering.
-We recommend a minimum of 16GB of free memory on the system rendering images.
+To compile the Go service, run:
 
-Rendering multiple images in parallel requires an even bigger memory footprint. You can use the remote rendering service in order to render images on a remote system, so your local system resources are not affected.
-
-## Plugin installation
-
-You can install the plugin using Grafana CLI (recommended way) or with Grafana Docker image.
-
-### Grafana CLI (recommended)
-
-```bash
-grafana-cli plugins install grafana-image-renderer
+```shell
+$ go build -buildvcs -o grafana-image-renderer .
 ```
 
-### Grafana Docker image
+To compile the Docker image, run:
 
-This plugin is not compatible with the current Grafana Docker image and requires additional system-level dependencies. We recommend setting up another Docker container for rendering and using remote rendering instead. For instruction, refer to [Run in Docker](#run-in-docker).
-
-If you still want to install the plugin with the Grafana Docker image, refer to the instructions on building a custom Grafana image in [Grafana Docker documentation](https://grafana.com/docs/grafana/latest/setup-grafana/configure-docker/#build-a-custom-grafana-docker-image).
-
-## Remote rendering service installation
-
-> **Note:** Requires an internet connection.
-
-You can run this plugin as a remote HTTP rendering service. In this setup, Grafana renders an image by making an HTTP request to the remote rendering service, which in turn renders the image and returns it back in the HTTP response to Grafana.
-
-You can run the remote HTTP rendering service using Docker or as a standalone Node.js application.
-
-### Run in Docker
-
-Grafana Docker images are published at [Docker Hub](https://hub.docker.com/r/grafana/grafana-image-renderer).
-
-The following example shows how you can run Grafana and the remote HTTP rendering service in two separate Docker containers using Docker Compose.
-
-1. Create a `docker-compose.yml` with the following content:
-
-   ```yaml
-   version: '2'
-
-   services:
-     grafana:
-       image: grafana/grafana:latest
-       ports:
-         - '3000:3000'
-       environment:
-         GF_RENDERING_SERVER_URL: http://renderer:8081/render
-         GF_RENDERING_CALLBACK_URL: http://grafana:3000/
-         GF_LOG_FILTERS: rendering:debug
-     renderer:
-       image: grafana/grafana-image-renderer:latest
-       ports:
-         - 8081
-   ```
-
-1. Next, run docker compose.
-
-   ```bash
-   docker-compose up
-   ```
-
-### Run as standalone Node.js application
-
-The following example describes how to build and run the remote HTTP rendering service as a standalone Node.js application and configure Grafana appropriately.
-
-1. Clone the [Grafana image renderer plugin](https://github.com/grafana/grafana-image-renderer/) Git repository.
-1. Install dependencies and build:
-
-   ```bash
-   yarn install --pure-lockfile
-   yarn run build
-   ```
-
-1. Run the server:
-
-   ```bash
-   node build/app.js server --port=8081
-   ```
-
-1. Update Grafana configuration:
-
-   ```
-   [rendering]
-   server_url = http://localhost:8081/render
-   callback_url = http://localhost:3000/
-   ```
-
-1. Restart Grafana.
-
-## Security
-
-Access to the rendering endpoints is restricted to requests providing an auth token. This token should be configured in the Grafana configuration file and the renderer configuration file. This token is important when you run the plugin in remote rendering mode to avoid unauthorized file disclosure (see [CVE-2022-31176](https://github.com/grafana/grafana-image-renderer/security/advisories/GHSA-2cfh-233g-m4c5)).
-
-See [Grafana Image Rendering documentation](https://grafana.com/docs/grafana/latest/image-rendering/#security) to configure this secret token. The default value `-` is configured on both Grafana and the image renderer when you get started but we strongly recommend you to update this to a more secure value.
-
-## Configuration
-
-For available configuration settings, please refer to [Grafana Image Rendering documentation](https://grafana.com/docs/grafana/latest/image-rendering/#configuration).
-
-## Troubleshooting
-
-For troubleshooting help, refer to
-[Grafana Image Rendering troubleshooting documentation](https://grafana.com/docs/grafana/latest/image-rendering/troubleshooting/).
-
-## Testing
-
-In order to run the image-renderer automated test suites, you need to run the following command from the root folder:
-
-```
-yarn test
+```shell
+$ docker build .
 ```
 
-This will launch a Grafana instance in Docker and, then, run the test suites.
+The following tools are also useful for engineers:
 
-_Notes:_
-
-If there are some expected changes in the reference image files (located in `/tests/testdata`), run `yarn test-update` and push the updated references.
-
-If the tests are failing and you want to see the difference between the image you get and the reference image, run `yarn test-diff`. This will generate images (called `diff_<test case>.png`) containing the differences in the `/tests/testdata` folder.
-
-### Fixing Drone issues
-
-If tests are successful in your local environement but fail in Drone. You can follow these steps to run the tests in an environment similar to the Drone pipeline. This will mount your local files of the `grafana-image-renderer` repo in the Docker image so any change that happens in the Docker image will be available in your local environment. This allows you to run `yarn test-diff` and `yarn test-update` in Docker and see the results locally. 
-
-1. Run the Drone environment in Docker:
-
-```
-cd ./devenv/docker/drone
-docker-compose up
+```shell
+$ go tool goimports # our code formatter of choice
+$ golangci-lint run # our linter of choice
+$ IMAGE=tag-here go test ./tests/acceptance/... -count=1 # run acceptance tests
 ```
 
-2. Open a terminal within the `drone-docker-puppeteer` container and run the following commands:
+## Release
 
-```
-cd /drone/src
-PUPPETEER_CACHE_DIR=/drone/src/cache yarn install --frozen-lockfile --no-progress
-PUPPETEER_CACHE_DIR=/drone/src/cache CI=true yarn test-ci
-```
+When you are ready to make a release, tag it in Git (`git tag vX.Y.Z`; remember the `v` prefix), then push it.
+GitHub Actions deals with the build and deployment.
 
-_Notes:_
-The tests might take longer in the Docker container. If you run into timeout issues, you can run the test command with the `--testTimeout option`:
-```
-PUPPETEER_CACHE_DIR=/drone/src/cache CI=true yarn test-ci --testTimeout=10000
-```
+## Updating Chromium
+
+One of the quick ways you can check the latest version available is by going to [https://packages.debian.org/trixie/chromium](https://packages.debian.org/trixie/chromium) (change `trixie` for the codename of the current Debian version we use in the `Dockerfile`, as of writing `13`).
+    
+Make sure that the build for amd64 and arm64 are both available first (scroll down to the bottom of the page and check that there are no red backgrounds), and ignore anything after the `-` in the version, this is what we'll use.
+  
+In the `Dockerfile`, update `CHROMIUM_VERSION=` to the version found on the website. Changing this argument also reruns the package update and upgrade step. Use the cachebuster date for manual package refreshes.
+  
+Open a PR, merge it, and create a new GitHub release. You're done!
+
+## Updating Go
+
+For a new minor N, only update to a `.0` patch if there are security vulnerabilities that are fixed and not present in the N-1 minor. Otherwise try to stick with the N-1 minor until the N minor is at least on a `.1` patch.
+  
+1. Change the `go` directive to the new version in `go.mod`. 
+2. Update the image at the top of the `Dockerfile` starting with `FROM golang:...` with the new version. Don't forget to pin it with the sha256!
+    - You can find it by going to DockerHub, or pulling the image yourself you can see a `Digest: ...` line with the value. 
+
+**Note**: On minor updates, golangci-lint might break. Also update the CI action to use the latest version, once that is available with support for the new minor.
+
+## Updating Debian
+
+It is good to update whenever a new image is tagged, as it mainly contains package updates or potential security fixes which are always nice to have.
+  
+1. Update the image in the `Dockerfile` starting with `FROM debian:...` with the new version. Don't forget to pin it with the sha256!
+    - You can find it by going to DockerHub, or pulling the image yourself you can see a `Digest: ...` line with the value.
+2. Bust the cache. Changing the base image will invalidate it anyways but for good manners set it to today's date.

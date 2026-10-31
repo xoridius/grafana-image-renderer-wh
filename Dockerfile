@@ -1,57 +1,65 @@
-# Base stage
-FROM node:18-alpine AS base
+# This Dockerfile does two things in parallel:
+#   1. It builds a statically linked Go binary. This is fine to use in Debian, Alpine, RHEL, etc. base-images.
+#        -> Why static linking? We want to ensure we can switch base-image with little to no effort.
+#   2. It builds a running environment. This is the environment that exists for the Go binary, and should have all necessary pieces to run the application.
 
-ENV CHROME_BIN="/usr/bin/chromium-browser"
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD="true"
+FROM golang:1.26.10-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS app
 
-WORKDIR /usr/src/app
+RUN apk add --no-cache git
 
-RUN apk --no-cache upgrade && \
-    apk add --no-cache udev ttf-opensans unifont chromium ca-certificates dumb-init && \
-    rm -rf /tmp/*
-
-# Build stage
-FROM base AS build
-
+WORKDIR /src
 COPY . ./
 
-RUN yarn install --pure-lockfile
-RUN yarn run build
+RUN --mount=type=cache,target=/go/pkg/mod CGO_ENABLED=0 go build \
+  -o grafana-image-renderer \
+  -buildvcs \
+  -ldflags '-s -w -extldflags "-static"' \
+  .
 
-# Production dependencies stage
-FROM base AS prod-dependencies
-
-COPY package.json yarn.lock ./
-RUN yarn install --pure-lockfile --production
-
-# Final stage
-FROM base
+FROM debian:trixie-20261027@sha256:f61f274a579884f5e460bcf53422121be57388ac21f0df16e4e460df7b691e3b AS output_image
 
 LABEL maintainer="Grafana team <hello@grafana.com>"
-LABEL org.opencontainers.image.source="https://github.com/grafana/grafana-image-renderer"
+LABEL org.opencontainers.image.source="https://github.com/xoridius/grafana-image-renderer-wh"
 
-ARG GF_UID="472"
-ARG GF_GID="472"
-ENV GF_PATHS_HOME="/usr/src/app"
+# renovate: depName=chromium
+ARG CHROMIUM_VERSION=156.0.8078.47
 
-WORKDIR $GF_PATHS_HOME
+# Chromium updates bust the cache; change the date for a manual package refresh.
+RUN echo 'cachebuster 2026-10-28' && apt-get update && apt-get upgrade -y --no-install-recommends --no-install-suggests
 
-RUN addgroup -S -g $GF_GID grafana && \
-    adduser -S -u $GF_UID -G grafana grafana && \
-    mkdir -p "$GF_PATHS_HOME" && \
-    chown -R grafana:grafana "$GF_PATHS_HOME"
+RUN apt-get install -y --no-install-recommends --no-install-suggests \
+  fonts-ipaexfont-gothic fonts-wqy-zenhei fonts-thai-tlwg fonts-khmeros fonts-kacst-one fonts-freefont-ttf \
+  libxss1 unifont fonts-open-sans fonts-roboto fonts-inter fonts-recommended \
+  bash util-linux openssl tini ca-certificates locales libnss3-tools ca-certificates
 
-ENV NODE_ENV=production
+RUN apt-get satisfy -y --no-install-recommends --no-install-suggests \
+  "chromium (>=${CHROMIUM_VERSION}), chromium-driver (>=${CHROMIUM_VERSION}), chromium-shell (>=${CHROMIUM_VERSION}), chromium-sandbox (>=${CHROMIUM_VERSION})"
 
-COPY --from=prod-dependencies /usr/src/app/node_modules node_modules
-COPY --from=build /usr/src/app/build build
-COPY --from=build /usr/src/app/proto proto
-COPY --from=build /usr/src/app/default.json config.json
-COPY --from=build /usr/src/app/plugin.json plugin.json
+# There is no point to us shipping headers.
+RUN dpkg -l | grep -E -- '-dev|-headers' | awk '{ print $2; }' | xargs apt-get remove -y
+# Do a final automatic clean-up.
+RUN apt-get autoremove -y
+
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# This is so the browser can write file names that contain non-ASCII characters.
+RUN echo "en_US.UTF-8 UTF-8" > /etc/locale.gen && locale-gen en_US.UTF-8
+RUN fc-cache -fr
+RUN update-ca-certificates --fresh
+
+RUN useradd --create-home --system --uid 65532 --user-group nonroot
+RUN chgrp -R 0 /home/nonroot && chmod -R g=u /home/nonroot
+WORKDIR /home/nonroot
+USER 65532
+
+COPY --from=app /src/grafana-image-renderer /usr/bin/grafana-image-renderer
 
 EXPOSE 8081
 
-USER grafana
-
-ENTRYPOINT ["dumb-init", "--"]
-CMD ["node", "build/app.js", "server", "--config=config.json"]
+ENV CHROME_BIN="/usr/bin/chromium"
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+ENTRYPOINT ["tini", "--", "/usr/bin/grafana-image-renderer"]
+CMD ["server"]
+HEALTHCHECK --interval=10s --retries=3 --timeout=3s --start-interval=250ms --start-period=30s \
+  CMD ["/usr/bin/grafana-image-renderer", "healthcheck"]
