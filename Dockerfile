@@ -3,14 +3,17 @@
 #        -> Why static linking? We want to ensure we can switch base-image with little to no effort.
 #   2. It builds a running environment. This is the environment that exists for the Go binary, and should have all necessary pieces to run the application.
 
-FROM golang:1.26.10-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS app
+# Compile natively; Go selects the output architecture without QEMU.
+FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine@sha256:a2012b4a1d1f9f7e9f44e0d39b805a901e856b1dd80b4e6ee4338db547050308 AS app
 
 RUN apk add --no-cache git
 
 WORKDIR /src
 COPY . ./
 
-RUN --mount=type=cache,target=/go/pkg/mod CGO_ENABLED=0 go build \
+ARG TARGETOS
+ARG TARGETARCH
+RUN --mount=type=cache,target=/go/pkg/mod CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build \
   -o grafana-image-renderer \
   -buildvcs \
   -ldflags '-s -w -extldflags "-static"' \
