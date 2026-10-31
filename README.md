@@ -7,6 +7,8 @@ Grafana's request parameters. For the existing 400x300 layout, also set
 `BROWSER_MIN_WIDTH=400` and `BROWSER_MIN_HEIGHT=300`; upstream minimums otherwise
 enlarge the viewport.
 
+CI publishes only `linux/arm64` for the monitoring server, using one native ARM64 job.
+
 
 A backend service for Grafana.
 It provides panel and dashboard rendering with a headless browser (Chromium).
